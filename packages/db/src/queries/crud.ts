@@ -1,3 +1,9 @@
+// - User CRUD: createUser, getUserById, updateUser, deleteUser
+// - Driver CRUD: createDriver, getDriverById, updateDriverStatus
+// - Ride CRUD: createRideRequest, getRideRequestById, cancelRideRequest
+// - Pool CRUD: createPool, getPoolById, updatePoolStatus, deletePool
+
+
 import { eq } from "drizzle-orm";
 import { db } from "../index";
 import { 
