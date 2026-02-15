@@ -1,0 +1,43 @@
+{
+  "name": "alike",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "dotenv": "^17.2.2",
+      "zod": "^4.1.13",
+      "typescript": "^5"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check-types": "turbo check-types",
+    "dev:native": "turbo -F native dev",
+    "dev:web": "turbo -F web dev",
+    "db:push": "turbo -F @alike/db db:push",
+    "db:studio": "turbo -F @alike/db db:studio",
+    "db:generate": "turbo -F @alike/db db:generate",
+    "db:migrate": "turbo -F @alike/db db:migrate",
+    "db:start": "turbo -F @alike/db db:start",
+    "db:watch": "turbo -F @alike/db db:watch",
+    "db:stop": "turbo -F @alike/db db:stop",
+    "db:down": "turbo -F @alike/db db:down"
+  },
+  "dependencies": {
+    "@alike/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@alike/config": "workspace:*",
+    "@types/node": "^22.13.14",
+    "turbo": "^2.6.3",
+    "typescript": "catalog:"
+  },
+  "packageManager": "bun@1.3.5"
+}
