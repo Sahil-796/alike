@@ -22,6 +22,7 @@ export async function addRideToQueue(rideData: {
   dropoffLng: number;
   seats: number;
   luggage: number;
+  direction: 'airport_to_city' | 'city_to_airport';
 }) {
   await rideQueue.add("find-pool", rideData, {
     attempts: 3,
@@ -65,9 +66,11 @@ async function processRideMatching(data: {
   dropoffLng: number;
   seats: number;
   luggage: number;
+  direction: 'airport_to_city' | 'city_to_airport';
 }) {
   console.log(`🔍 Processing ride ${data.rideId}...`);
   console.log(`   Pickup: ${data.pickupLat}, ${data.pickupLng}`);
+  console.log(`   Direction: ${data.direction}`);
   console.log(`   Seats: ${data.seats}, Luggage: ${data.luggage}`);
 
   try {
@@ -76,8 +79,11 @@ async function processRideMatching(data: {
     const existingPool = await findBestPool(
       data.pickupLat,
       data.pickupLng,
+      data.dropoffLat,
+      data.dropoffLng,
       data.seats,
       data.luggage,
+      data.direction,
       5
     );
 
@@ -127,6 +133,7 @@ async function createNewPoolForRide(data: {
   dropoffLng: number;
   seats: number;
   luggage: number;
+  direction: 'airport_to_city' | 'city_to_airport';
 }) {
   const pool = await createPoolForRide(data.rideId, {
     pickupLat: data.pickupLat,
@@ -135,6 +142,7 @@ async function createNewPoolForRide(data: {
     dropoffLng: data.dropoffLng,
     seats: data.seats,
     luggage: data.luggage,
+    direction: data.direction,
   });
 
   if (pool) {
