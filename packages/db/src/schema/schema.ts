@@ -152,6 +152,13 @@ export const pools = pgTable('pools', {
   basePrice: decimal('base_price', { precision: 10, scale: 2 }),
   surgeMultiplier: decimal('surge_multiplier', { precision: 3, scale: 2 }).default('1.00'),
   
+  // Direction: 'airport_to_city' or 'city_to_airport'
+  direction: varchar('direction', { length: 20 }),
+  
+  // Pool center for geospatial matching (calculated from waypoints)
+  centerLat: decimal('center_lat', { precision: 10, scale: 8 }),
+  centerLng: decimal('center_lng', { precision: 11, scale: 8 }),
+  
   // Concurrency control (for optimistic locking)
   version: integer('version').notNull().default(0),
   
@@ -165,6 +172,12 @@ export const pools = pgTable('pools', {
   index('pools_driver_id_idx').on(table.driverId),
   index('pools_status_capacity_idx').on(table.status, table.filledSeats, table.maxSeats),
   index('pools_created_idx').on(table.createdAt),
+  index('pools_direction_idx').on(table.direction),
+  // Geospatial index for pool center (for finding nearby pools)
+  index('pools_center_geo_idx').using(
+    'gist',
+    sql`point(${table.centerLng}, ${table.centerLat})`
+  ),
 ]);
 
 // ============================================================================
