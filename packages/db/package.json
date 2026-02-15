@@ -21,8 +21,10 @@
   },
   "dependencies": {
     "@alike/env": "workspace:*",
+    "bullmq": "^5.69.2",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.9.3",
     "pg": "^8.17.1",
     "zod": "catalog:"
   },
