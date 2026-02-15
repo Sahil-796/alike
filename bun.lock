@@ -20,6 +20,7 @@
       "name": "web",
       "version": "0.1.0",
       "dependencies": {
+        "@alike/db": "workspace:*",
         "@alike/env": "workspace:*",
         "@base-ui/react": "^1.0.0",
         "babel-plugin-react-compiler": "^1.0.0",
