@@ -1,4 +1,10 @@
 import { Queue, Worker } from "bullmq";
+import { 
+  findBestPool, 
+  assignRideToPool, 
+  createPoolForRide 
+} from "./queries/rides";
+import { updatePoolStatus } from "./queries/crud";
 
 const connection = {
   host: process.env.REDIS_HOST || "localhost",
@@ -24,15 +30,10 @@ export async function addRideToQueue(rideData: {
 }
 
 export function startRideWorker() {
-  
-  // new worker. the callback runs for every job listed
   const worker = new Worker("ride-matching", async (job) => {
-    
-    // this runs processRideMatching whenever addRideToQueue is called by api
     if (job.name === "find-pool") {
       await processRideMatching(job.data);
     }
-    
     return { success: true };
   }, { 
     connection: {
@@ -53,42 +54,105 @@ export function startRideWorker() {
 }
 
 // ============================================================================
-// BACKGROUND PROCESSING rides to pool
+// PROCESS RIDE MATCHING - THE ACTUAL ALGORITHM
 // ============================================================================
 
 async function processRideMatching(data: {
   rideId: string;
   pickupLat: number;
   pickupLng: number;
+  dropoffLat: number;
+  dropoffLng: number;
   seats: number;
   luggage: number;
 }) {
-  // TODO: Implement your matching logic here
-  // 1. Find nearby pools
-  // 2. Check capacity
-  // 3. Assign ride to pool
-  // 4. Update database
-  // console.log(`Finding pool for ride ${data.rideId}...`);
-  
-  
-  const pool = await findBestPool(data.pickupLat, data.pickupLng, data.seats);
-  if (pool) {
-    await assignRideToPool(data.rideId, pool.id);
-    await updateRideStatus(data.rideId, "matched");
+  console.log(`🔍 Processing ride ${data.rideId}...`);
+  console.log(`   Pickup: ${data.pickupLat}, ${data.pickupLng}`);
+  console.log(`   Seats: ${data.seats}, Luggage: ${data.luggage}`);
+
+  try {
+    console.log(`   Step 1: Searching for existing pools...`);
+    
+    const existingPool = await findBestPool(
+      data.pickupLat,
+      data.pickupLng,
+      data.seats,
+      data.luggage,
+      5
+    );
+
+    if (existingPool) {
+      console.log(`   Step 2a: Found pool ${existingPool.id}! Assigning...`);
+      
+      const result = await assignRideToPool(
+        data.rideId,
+        existingPool.id,
+        12.50
+      );
+
+      if (result.success) {
+        console.log(`   Ride ${data.rideId} matched to pool ${existingPool.id}`);
+        console.log(`   Price: $12.50`);
+        
+        if (existingPool.filledSeats + data.seats >= existingPool.maxSeats) {
+          console.log(`   Pool ${existingPool.id} is now FULL!`);
+          await updatePoolStatus(existingPool.id, "locked");
+        }
+      } else {
+        console.error(`   ❌ Failed to assign: ${result.error}`);
+        await createNewPoolForRide(data);
+      }
+      
+    } else {
+      console.log(`   Step 2b: No matching pool found. Creating new pool...`);
+      await createNewPoolForRide(data);
+    }
+
+  } catch (error) {
+    console.error(`   ❌ Error processing ride ${data.rideId}:`, error);
   }
-  
-  console.log(`✅ Done processing ride ${data.rideId}`);
+
+  console.log(`   Done processing ride ${data.rideId}\n`);
 }
 
+// ============================================================================
+// HELPER: Create new pool when no match found
+// ============================================================================
 
+async function createNewPoolForRide(data: {
+  rideId: string;
+  pickupLat: number;
+  pickupLng: number;
+  dropoffLat: number;
+  dropoffLng: number;
+  seats: number;
+  luggage: number;
+}) {
+  const pool = await createPoolForRide(data.rideId, {
+    pickupLat: data.pickupLat,
+    pickupLng: data.pickupLng,
+    dropoffLat: data.dropoffLat,
+    dropoffLng: data.dropoffLng,
+    seats: data.seats,
+    luggage: data.luggage,
+  });
 
+  if (pool) {
+    console.log(`   ✅ Created new pool ${pool.id} for ride ${data.rideId}`);
+    console.log(`   💰 Price: $15.00 (solo until matched)`);
+  } else {
+    console.error(`   ❌ Failed to create pool for ride ${data.rideId}`);
+  }
+}
 
-
-
+// ============================================================================
+// API USAGE EXAMPLES
+// ============================================================================
 
 /*
 // apps/web/src/app/api/rides/route.ts
 import { addRideToQueue } from "@alike/db/events";
+import { createRideRequest } from "@alike/db/queries/rides";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -102,6 +166,8 @@ export async function POST(request: Request) {
     userId: ride.userId,
     pickupLat: ride.pickupLat,
     pickupLng: ride.pickupLng,
+    dropoffLat: ride.dropoffLat,
+    dropoffLng: ride.dropoffLng,
     seats: ride.seats,
     luggage: ride.luggage,
   });
@@ -115,6 +181,8 @@ export async function POST(request: Request) {
 }
 
 // apps/web/src/app/api/rides/[id]/route.ts
+import { getRideRequestById } from "@alike/db/queries/crud";
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const ride = await getRideRequestById(params.id);
   
