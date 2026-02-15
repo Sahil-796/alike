@@ -216,30 +216,6 @@ export async function updatePoolStatus(id: string, status: Pool["status"]): Prom
   return pool;
 }
 
-export async function assignDriverToPool(
-  poolId: string, 
-  driverId: string
-): Promise<Pool | undefined> {
-  const [pool] = await db
-    .update(pools)
-    .set({ 
-      driverId, 
-      status: "confirmed",
-    })
-    .where(eq(pools.id, poolId))
-    .returning();
-  
-  // Update driver status
-  if (pool) {
-    await db
-      .update(drivers)
-      .set({ status: "assigned" })
-      .where(eq(drivers.id, driverId));
-  }
-  
-  return pool;
-}
-
 export async function deletePool(id: string): Promise<Pool | undefined> {
   const [pool] = await db.delete(pools).where(eq(pools.id, id)).returning();
   return pool;
