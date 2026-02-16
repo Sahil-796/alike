@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../index";
-import { rideRequests, pools, drivers, type RideRequest, type Pool } from "../schema/schema";
+import { rideRequests, pools, drivers, vehicles, type RideRequest, type Pool, type Driver } from "../schema/schema";
 
 // ============================================================================
 // RIDE STATUS UPDATES
@@ -131,9 +131,11 @@ export async function findBestPool(
   const maxDistanceMeters = maxDistanceKm * 1000;
 
   // ST_DWithin ->> O(log n) performance
+  // status = forming (i.e not locked), driver assigned, checks direction, seats, luggage and max distance range
   const result = await db.execute<Pool>(sql`
     SELECT * FROM pools
     WHERE status = 'forming'
+      AND driver_id is NOT NULL
       AND direction = ${direction}
       AND (filled_seats + ${seats}) <= max_seats
       AND (filled_luggage + ${luggage}) <= max_luggage
@@ -185,8 +187,55 @@ export async function createPoolForRide(
     luggage: number;
     direction: 'airport_to_city' | 'city_to_airport';
   }
-): Promise<Pool | undefined> {
+): Promise<{ pool?: Pool; driver?: Driver; error?: string }> {
   return db.transaction(async (tx) => {
+    // Find nearest available driver
+    const driverResult = await tx.execute<{ id: string; distance: number }>(sql`
+      SELECT 
+        d.id,
+        ST_Distance(
+          ST_SetSRID(ST_MakePoint(d.current_lng, d.current_lat), 4326)::geography,
+          ST_SetSRID(ST_MakePoint(${rideData.pickupLng}, ${rideData.pickupLat}), 4326)::geography
+        ) / 1000 as distance
+      FROM drivers d
+      WHERE d.status = 'available'
+        AND d.current_lat IS NOT NULL
+        AND d.current_lng IS NOT NULL
+      ORDER BY distance
+      LIMIT 1
+    `);
+
+    const nearestDriver = driverResult.rows?.[0];
+    
+    if (!nearestDriver) {
+      return { error: "No available drivers nearby" };
+    }
+
+    // driver details and vehicle with lock
+    const [driver] = await tx
+      .select()
+      .from(drivers)
+      .where(eq(drivers.id, nearestDriver.id))
+      .for("update");
+
+    if (!driver || driver.status !== 'available') {
+      return { error: "Driver no longer available" };
+    }
+
+    // vehicle capacity
+    const [vehicle] = await tx
+      .select()
+      .from(vehicles)
+      .where(eq(vehicles.driverId, driver.id));
+
+    const maxSeats = vehicle?.maxSeats || 4;
+    const maxLuggage = vehicle?.maxLuggage || 4;
+
+    // Check if initial ride fits. classic edge case 
+    if (rideData.seats > maxSeats || rideData.luggage > maxLuggage) {
+      return { error: "Ride exceeds vehicle capacity" };
+    }
+
     const waypoints = [
       {
         lat: rideData.pickupLat,
@@ -202,16 +251,17 @@ export async function createPoolForRide(
         rideRequestId: rideId,
         sequence: 2,
       },
-    ]
+    ];
 
     const center = calculatePoolCenter(waypoints);
 
-    // 1. Create new pool
+    // Create pool with assigned driver
     const [pool] = await tx
       .insert(pools)
       .values({
-        maxSeats: 4,
-        maxLuggage: 4,
+        driverId: driver.id,
+        maxSeats: maxSeats,
+        maxLuggage: maxLuggage,
         filledSeats: rideData.seats,
         filledLuggage: rideData.luggage,
         status: "forming",
@@ -223,21 +273,27 @@ export async function createPoolForRide(
       .returning();
 
     if (!pool) {
-      return undefined;
+      return { error: "Failed to create pool" };
     }
 
-    // 2. Assign ride to new pool
+    //Update driver status to assigned
+    await tx
+      .update(drivers)
+      .set({ status: 'assigned' })
+      .where(eq(drivers.id, driver.id));
+
+    // Assign initial ride to pool
     await tx
       .update(rideRequests)
       .set({
         poolId: pool.id,
-        individualPrice: "15.00", // Default price
+        individualPrice: "15.00",
         status: "matched",
         matchedAt: new Date(),
       })
       .where(eq(rideRequests.id, rideId));
 
-    return pool;
+    return { pool, driver };
   });
 }
 
@@ -333,6 +389,54 @@ export async function assignDriverToPool(
       .where(eq(rideRequests.poolId, poolId));
 
     return { success: true };
+  });
+}
+
+// ============================================================================
+// DRIVER ARRIVAL - Lock pool
+// ============================================================================
+
+export async function driverArrived(
+  poolId: string,
+  driverId: string
+): Promise<{ success: boolean; error?: string; pool?: Pool }> {
+  return db.transaction(async (tx) => {
+
+    const [pool] = await tx
+      .select()
+      .from(pools)
+      .where(eq(pools.id, poolId))
+      .for("update");
+
+    if (!pool) {
+      return { success: false, error: "Pool not found" };
+    }
+
+    if (pool.driverId !== driverId) {
+      return { success: false, error: "Not authorized to lock this pool" };
+    }
+
+    if (pool.status !== 'forming') {
+      return { success: false, error: "Pool is not in forming state" };
+    }
+
+    // lock pool
+    const [updatedPool] = await tx
+      .update(pools)
+      .set({
+        status: 'locked',
+        lockedAt: new Date(),
+      })
+      .where(eq(pools.id, poolId))
+      .returning();
+
+    // Update all ride requests to confirmed
+    await tx
+      .update(rideRequests)
+      .set({ status: 'confirmed' })
+      .where(eq(rideRequests.poolId, poolId));
+
+    return { success: true, pool: updatedPool };
   });
 }
 

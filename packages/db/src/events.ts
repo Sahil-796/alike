@@ -135,7 +135,7 @@ async function createNewPoolForRide(data: {
   luggage: number;
   direction: 'airport_to_city' | 'city_to_airport';
 }) {
-  const pool = await createPoolForRide(data.rideId, {
+  const result = await createPoolForRide(data.rideId, {
     pickupLat: data.pickupLat,
     pickupLng: data.pickupLng,
     dropoffLat: data.dropoffLat,
@@ -145,11 +145,14 @@ async function createNewPoolForRide(data: {
     direction: data.direction,
   });
 
-  if (pool) {
-    console.log(`   ✅ Created new pool ${pool.id} for ride ${data.rideId}`);
-    console.log(`   💰 Price: $15.00 (solo until matched)`);
+  if (result.pool && result.driver) {
+    console.log(`   ✅ Created new pool ${result.pool.id} for ride ${data.rideId}`);
+    console.log(`   🚗 Driver ${result.driver.id} assigned immediately`);
+    console.log(`   📍 Driver is driving to pickup location`);
+    console.log(`   💰 Price: $15.00 (more passengers can join until driver arrives)`);
+    console.log(`   🔒 Pool will lock when driver reaches pickup`);
   } else {
-    console.error(`   ❌ Failed to create pool for ride ${data.rideId}`);
+    console.error(`   ❌ Failed to create pool for ride ${data.rideId}: ${result.error}`);
   }
 }
 
