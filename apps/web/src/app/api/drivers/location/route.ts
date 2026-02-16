@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     if (!driver) {
       return NextResponse.json(
         { error: "Driver not found" },
-        { status: 404 }o
+        { status: 404 }
       );
     }
 
