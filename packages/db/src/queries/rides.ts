@@ -1,6 +1,6 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../index";
-import { rideRequests, pools, type RideRequest, type Pool } from "../schema/schema";
+import { rideRequests, pools, drivers, type RideRequest, type Pool } from "../schema/schema";
 
 // ============================================================================
 // RIDE STATUS UPDATES
@@ -28,8 +28,10 @@ export async function updateRideStatus(
   return ride;
 }
 
+// documenting for concurrency handling as mentioned in PS
 // ============================================================================
-// ASSIGN RIDE TO POOL (with optimistic locking)
+// ASSIGN RIDE TO POOL (with locking and versioning) (uses tx as transactions which ensure locking of rows
+// by .forUpdate())
 // ============================================================================
 
 export async function assignRideToPool(
@@ -37,8 +39,9 @@ export async function assignRideToPool(
   poolId: string,
   price: number
 ): Promise<{ success: boolean; ride?: RideRequest; error?: string }> {
+  
   return db.transaction(async (tx) => {
-    // 1. Lock the pool row
+    
     const [pool] = await tx
       .select()
       .from(pools)
@@ -49,7 +52,6 @@ export async function assignRideToPool(
       return { success: false, error: "Pool not found" };
     }
 
-    // 2. Get ride details
     const [ride] = await tx
       .select()
       .from(rideRequests)
@@ -59,7 +61,6 @@ export async function assignRideToPool(
       return { success: false, error: "Ride not found" };
     }
 
-    // 3. Check capacity
     if (pool.filledSeats + ride.seats > pool.maxSeats) {
       return { success: false, error: "Not enough seats" };
     }
@@ -68,17 +69,35 @@ export async function assignRideToPool(
       return { success: false, error: "Not enough luggage space" };
     }
 
-    // 4. Update pool capacity
+    const updatedWaypoints = [...(pool.waypoints || []), {
+      lat: Number(ride.pickupLat),
+      lng: Number(ride.pickupLng),
+      type: "pickup" as const,
+      rideRequestId: rideId,
+      sequence: (pool.waypoints?.length || 0) + 1,
+    }, {
+      lat: Number(ride.dropoffLat),
+      lng: Number(ride.dropoffLng),
+      type: "dropoff" as const,
+      rideRequestId: rideId,
+      sequence: (pool.waypoints?.length || 0) + 2,
+    }];
+
+    const newCenter = calculatePoolCenter(updatedWaypoints);
+
     await tx
       .update(pools)
       .set({
         filledSeats: pool.filledSeats + ride.seats,
         filledLuggage: pool.filledLuggage + ride.luggage,
-        version: pool.version + 1,
+        waypoints: updatedWaypoints,
+        centerLat: newCenter.lat.toString(),
+        centerLng: newCenter.lng.toString(),
+        version: pool.version + 1,  // this handles versioning for pool updates which eventually ensure consistency across multiple updates
       })
       .where(eq(pools.id, poolId));
 
-    // 5. Assign ride to pool
+    // final db update for rideRequest
     const [updatedRide] = await tx
       .update(rideRequests)
       .set({
@@ -95,45 +114,55 @@ export async function assignRideToPool(
 }
 
 // ============================================================================
-// FIND BEST POOL FOR RIDE (used by matching algorithm)
+// FIND BEST POOL FOR RIDE
 // ============================================================================
 
 export async function findBestPool(
   pickupLat: number,
   pickupLng: number,
+  dropoffLat: number,
+  dropoffLng: number,
   seats: number,
   luggage: number,
+  direction: 'airport_to_city' | 'city_to_airport',
   maxDistanceKm: number = 5
 ): Promise<Pool | undefined> {
-  // Get all forming pools with capacity
-  const availablePools = await db.query.pools.findMany({
-    where: and(
-      eq(pools.status, "forming"),
-      sql`${pools.filledSeats} + ${seats} <= ${pools.maxSeats}`,
-      sql`${pools.filledLuggage} + ${luggage} <= ${pools.maxLuggage}`
-    ),
-  });
+
+  const maxDistanceMeters = maxDistanceKm * 1000;
+
+  // ST_DWithin ->> O(log n) performance
+  const result = await db.execute<Pool>(sql`
+    SELECT * FROM pools
+    WHERE status = 'forming'
+      AND direction = ${direction}
+      AND (filled_seats + ${seats}) <= max_seats
+      AND (filled_luggage + ${luggage}) <= max_luggage
+      AND ST_DWithin(
+        ST_SetSRID(ST_MakePoint(center_lng, center_lat), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(${pickupLng}, ${pickupLat}), 4326)::geography,
+        ${maxDistanceMeters}
+      )
+    ORDER BY ST_Distance(
+      ST_SetSRID(ST_MakePoint(center_lng, center_lat), 4326)::geography,
+      ST_SetSRID(ST_MakePoint(${pickupLng}, ${pickupLat}), 4326)::geography
+    )
+    LIMIT 10
+  `);
+
+  const availablePools = result.rows || [];
 
   if (availablePools.length === 0) {
     return undefined;
   }
 
-  // Find closest pool
   let bestPool: Pool | undefined;
-  let minDistance = Infinity;
+  let minDetour = Infinity;
 
   for (const pool of availablePools) {
-    // Calculate distance from pickup to pool center
-    // For now, just return first available (you can improve this!)
-    const distance = calculateDistance(
-      pickupLat,
-      pickupLng,
-      40.7128, // TODO: Get pool center from waypoints or add centerLat/centerLng to schema
-      -74.0060
-    );
-
-    if (distance < minDistance && distance <= maxDistanceKm) {
-      minDistance = distance;
+    const detour = await calculateDetour(pool, pickupLat, pickupLng, dropoffLat, dropoffLng);
+    
+    if (detour < minDetour) {
+      minDetour = detour;
       bestPool = pool;
     }
   }
@@ -154,9 +183,29 @@ export async function createPoolForRide(
     dropoffLng: number;
     seats: number;
     luggage: number;
+    direction: 'airport_to_city' | 'city_to_airport';
   }
 ): Promise<Pool | undefined> {
   return db.transaction(async (tx) => {
+    const waypoints = [
+      {
+        lat: rideData.pickupLat,
+        lng: rideData.pickupLng,
+        type: "pickup" as const,
+        rideRequestId: rideId,
+        sequence: 1,
+      },
+      {
+        lat: rideData.dropoffLat,
+        lng: rideData.dropoffLng,
+        type: "dropoff" as const,
+        rideRequestId: rideId,
+        sequence: 2,
+      },
+    ]
+
+    const center = calculatePoolCenter(waypoints);
+
     // 1. Create new pool
     const [pool] = await tx
       .insert(pools)
@@ -166,22 +215,10 @@ export async function createPoolForRide(
         filledSeats: rideData.seats,
         filledLuggage: rideData.luggage,
         status: "forming",
-        waypoints: [
-          {
-            lat: rideData.pickupLat,
-            lng: rideData.pickupLng,
-            type: "pickup",
-            rideRequestId: rideId,
-            sequence: 1,
-          },
-          {
-            lat: rideData.dropoffLat,
-            lng: rideData.dropoffLng,
-            type: "dropoff",
-            rideRequestId: rideId,
-            sequence: 2,
-          },
-        ],
+        direction: rideData.direction,
+        centerLat: center.lat.toString(),
+        centerLng: center.lng.toString(),
+        waypoints,
       })
       .returning();
 
@@ -205,8 +242,176 @@ export async function createPoolForRide(
 }
 
 // ============================================================================
-// HELPER: Calculate distance between two points (Haversine formula)
+// FIND NEAREST DRIVERS (for pool assignment)
 // ============================================================================
+
+export async function findNearestDrivers(
+  centerLat: number,
+  centerLng: number,
+  maxDistanceKm: number = 10,
+  limit: number = 5
+): Promise<Array<{ id: string; distance: number }>> {
+  const maxDistanceMeters = maxDistanceKm * 1000;
+
+  const result = await db.execute<{ id: string; distance: number }>(sql`
+    SELECT 
+      id,
+      ST_Distance(
+        ST_SetSRID(ST_MakePoint(current_lng, current_lat), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(${centerLng}, ${centerLat}), 4326)::geography
+      ) / 1000 as distance
+    FROM drivers
+    WHERE status = 'available'
+      AND current_lat IS NOT NULL
+      AND current_lng IS NOT NULL
+      AND ST_DWithin(
+        ST_SetSRID(ST_MakePoint(current_lng, current_lat), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(${centerLng}, ${centerLat}), 4326)::geography,
+        ${maxDistanceMeters}
+      )
+    ORDER BY distance
+    LIMIT ${limit}
+  `);
+
+  return result.rows || [];
+}
+
+// ============================================================================
+// DRIVER ASSIGNMENT (accept pool)
+// ============================================================================
+
+export async function assignDriverToPool(
+  poolId: string,
+  driverId: string
+): Promise<{ success: boolean; error?: string }> {
+  return db.transaction(async (tx) => {
+    // 1. Check driver is available
+    const [driver] = await tx
+      .select()
+      .from(drivers)
+      .where(eq(drivers.id, driverId))
+      .for("update");
+
+    if (!driver || driver.status !== 'available') {
+      return { success: false, error: "Driver not available" };
+    }
+
+    // 2. Lock pool and check status
+    const [pool] = await tx
+      .select()
+      .from(pools)
+      .where(eq(pools.id, poolId))
+      .for("update");
+
+    if (!pool || pool.status !== 'locked') {
+      return { success: false, error: "Pool not available for assignment" };
+    }
+
+    if (pool.driverId) {
+      return { success: false, error: "Pool already has driver" };
+    }
+
+    // 3. Assign driver to pool
+    await tx
+      .update(pools)
+      .set({
+        driverId,
+        status: 'driver_assigned',
+      })
+      .where(eq(pools.id, poolId));
+
+    // 4. Mark driver as assigned
+    await tx
+      .update(drivers)
+      .set({ status: 'assigned' })
+      .where(eq(drivers.id, driverId));
+
+    // 5. Update all ride requests in pool
+    await tx
+      .update(rideRequests)
+      .set({ status: 'confirmed' })
+      .where(eq(rideRequests.poolId, poolId));
+
+    return { success: true };
+  });
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function calculatePoolCenter(waypoints: Array<{ lat: number; lng: number }>): { lat: number; lng: number } {
+  if (waypoints.length === 0) return { lat: 0, lng: 0 };
+  
+  const sumLat = waypoints.reduce((sum, wp) => sum + wp.lat, 0);
+  const sumLng = waypoints.reduce((sum, wp) => sum + wp.lng, 0);
+  
+  return {
+    lat: sumLat / waypoints.length,
+    lng: sumLng / waypoints.length,
+  };
+}
+
+async function calculateDetour(
+  pool: Pool,
+  newPickupLat: number,
+  newPickupLng: number,
+  newDropoffLat: number,
+  newDropoffLng: number
+): Promise<number> {
+  // Simple detour calculation: 
+  // Current route distance + distance to new pickup/dropoff
+  // This is a simplified version - in production, use proper route optimization
+  
+  const waypoints = pool.waypoints || [];
+  if (waypoints.length < 2) return 0;
+
+  // Calculate current route distance
+  let currentDistance = 0;
+  for (let i = 1; i < waypoints.length; i++) {
+    const prev = waypoints[i - 1];
+    const curr = waypoints[i];
+    if (!prev || !curr) continue;
+    currentDistance += calculateDistance(
+      prev.lat,
+      prev.lng,
+      curr.lat,
+      curr.lng
+    );
+  }
+
+  // Calculate new route with insertion
+  // For simplicity, add new pickup after last pickup, new dropoff before first dropoff
+  const pickups = waypoints.filter(w => w.type === 'pickup');
+  const dropoffs = waypoints.filter(w => w.type === 'dropoff');
+
+  let newDistance = 0;
+  
+  // Route: existing pickups -> new pickup -> new dropoff -> existing dropoffs
+  const lastPickup = pickups[pickups.length - 1];
+  if (lastPickup) {
+    newDistance += calculateDistance(
+      lastPickup.lat,
+      lastPickup.lng,
+      newPickupLat,
+      newPickupLng
+    );
+  }
+  
+  newDistance += calculateDistance(newPickupLat, newPickupLng, newDropoffLat, newDropoffLng);
+  
+  const firstDropoff = dropoffs[0];
+  if (firstDropoff) {
+    newDistance += calculateDistance(
+      newDropoffLat,
+      newDropoffLng,
+      firstDropoff.lat,
+      firstDropoff.lng
+    );
+  }
+
+  return newDistance - currentDistance;
+}
 
 function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371; // Earth's radius in km

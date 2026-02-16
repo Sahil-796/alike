@@ -26,7 +26,8 @@
     "db:start": "turbo -F @alike/db db:start",
     "db:watch": "turbo -F @alike/db db:watch",
     "db:stop": "turbo -F @alike/db db:stop",
-    "db:down": "turbo -F @alike/db db:down"
+    "db:down": "turbo -F @alike/db db:down",
+    "db:seed": ""
   },
   "dependencies": {
     "@alike/env": "workspace:*",
