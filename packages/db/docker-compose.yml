@@ -2,7 +2,7 @@ name: alike
 
 services:
   postgres:
-    image: postgres
+    image: postgis/postgis:16-3.4
     container_name: alike-postgres
     environment:
       POSTGRES_DB: alike
@@ -19,5 +19,16 @@ services:
       retries: 5
     restart: unless-stopped
 
+  redis:
+    image: redis:alpine
+    container_name: alike-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - alike_redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
 volumes:
   alike_postgres_data:
+  alike_redis_data:
