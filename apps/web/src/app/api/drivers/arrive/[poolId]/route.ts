@@ -4,17 +4,82 @@ import { driverArrived } from "@alike/db/queries/rides";
 /**
  * @swagger
  * /api/drivers/arrive/{poolId}:
- *   post: 
- *     description: driver arrives at pool
+ *   post:
+ *     summary: Driver arrives at pickup location
+ *     description: |
+ *       Called when driver reaches the pickup location.
+ *       Locks the pool - no more passengers can join.
+ *       Confirms all ride requests in the pool.
+ *     tags:
+ *       - Drivers
+ *     parameters:
+ *       - in: path
+ *         name: poolId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Pool ID
+ *         example: "17fcab28-bb21-47ef-9622-02ba6e5d61cc"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - driverId
+ *             properties:
+ *               driverId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Driver ID
+ *                 example: "b7ce06d8-665a-4949-9ec6-da7ffa13fafb"
  *     responses:
  *       200:
- *         description: success
+ *         description: Pool locked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Pool locked. No more passengers can join."
+ *                 poolId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: "17fcab28-bb21-47ef-9622-02ba6e5d61cc"
+ *                 status:
+ *                   type: string
+ *                   example: "locked"
+ *                 passengerCount:
+ *                   type: integer
+ *                   example: 2
  *       400:
- *         description: bad request
+ *         description: Invalid request or pool not in forming state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Pool is not in forming state"
  *       500:
- *         description: internal server error
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Internal server error"
  */
- 
 
 export async function POST(
   request: NextRequest,

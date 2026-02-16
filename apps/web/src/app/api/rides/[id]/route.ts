@@ -5,18 +5,137 @@ import { eq } from "drizzle-orm";
 
 /**
  * @swagger
- * /api/rides/{rideId}:
- *   get: 
- *     description: get ride details
+ * /api/rides/{id}:
+ *   get:
+ *     summary: Get ride details
+ *     description: |
+ *       Retrieves detailed information about a specific ride including status,
+ *       pool assignment, and driver information (if matched).
+ *     tags:
+ *       - Rides
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Ride ID
+ *         example: "84879dcc-055d-47ab-b9a1-e672c6e21cfe"
  *     responses:
  *       200:
- *         description: success
+ *         description: Ride details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   format: uuid
+ *                   example: "84879dcc-055d-47ab-b9a1-e672c6e21cfe"
+ *                 status:
+ *                   type: string
+ *                   enum: [pending, matched, confirmed, driver_arrived, ongoing, completed, cancelled]
+ *                   example: "matched"
+ *                 pickup:
+ *                   type: object
+ *                   properties:
+ *                     address:
+ *                       type: string
+ *                       example: "123 Main St, New York"
+ *                     lat:
+ *                       type: string
+ *                       example: "40.7500"
+ *                     lng:
+ *                       type: string
+ *                       example: "-74.0000"
+ *                 dropoff:
+ *                   type: object
+ *                   properties:
+ *                     address:
+ *                       type: string
+ *                       example: "JFK Airport Terminal 1"
+ *                     lat:
+ *                       type: string
+ *                       example: "40.6413"
+ *                     lng:
+ *                       type: string
+ *                       example: "-73.7781"
+ *                 seats:
+ *                   type: integer
+ *                   example: 2
+ *                 luggage:
+ *                   type: integer
+ *                   example: 2
+ *                 price:
+ *                   type: string
+ *                   example: "26.25"
+ *                 pool:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                       format: uuid
+ *                       example: "17fcab28-bb21-47ef-9622-02ba6e5d61cc"
+ *                     status:
+ *                       type: string
+ *                       enum: [forming, locked, confirmed, driver_assigned, ongoing, completed, cancelled]
+ *                       example: "forming"
+ *                     filledSeats:
+ *                       type: integer
+ *                       example: 2
+ *                     maxSeats:
+ *                       type: integer
+ *                       example: 4
+ *                     driver:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: string
+ *                           format: uuid
+ *                         rating:
+ *                           type: string
+ *                           example: "4.8"
+ *                         totalRides:
+ *                           type: integer
+ *                           example: 150
+ *                 requestedAt:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2024-01-15T10:30:00.000Z"
+ *                 matchedAt:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
+ *                   example: "2024-01-15T10:32:15.000Z"
+ *                 confirmedAt:
+ *                   type: string
+ *                   format: date-time
+ *                   nullable: true
  *       404:
- *         description: not fount
+ *         description: Ride not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Ride not found"
  *       500:
- *         description: internal server error
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Internal server error"
  */
- 
 
 export async function GET(
   request: NextRequest,

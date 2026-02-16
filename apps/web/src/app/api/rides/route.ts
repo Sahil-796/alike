@@ -6,17 +6,127 @@ import { calculatePrice } from "@/lib/pricing";
 /**
  * @swagger
  * /api/rides:
- *   post: 
- *     description: the create ride endpoint. this endpoint creates a new ride request and adds it to the queue. returning the response immediately
+ *   post:
+ *     summary: Create a new ride request
+ *     description: |
+ *       Creates a new ride request and adds it to the background processing queue.
+ *       Returns immediately with ride ID and estimated price.
+ *       The system will automatically match the ride to a pool and assign a driver.
+ *     tags:
+ *       - Rides
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - pickupLat
+ *               - pickupLng
+ *               - dropoffLat
+ *               - dropoffLng
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the passenger requesting the ride
+ *                 example: "123e4567-e89b-12d3-a456-426614174000"
+ *               pickupLat:
+ *                 type: number
+ *                 description: Pickup latitude
+ *                 example: 40.7500
+ *               pickupLng:
+ *                 type: number
+ *                 description: Pickup longitude
+ *                 example: -74.0000
+ *               dropoffLat:
+ *                 type: number
+ *                 description: Dropoff latitude
+ *                 example: 40.6413
+ *               dropoffLng:
+ *                 type: number
+ *                 description: Dropoff longitude
+ *                 example: -73.7781
+ *               pickupAddress:
+ *                 type: string
+ *                 description: Human-readable pickup address
+ *                 example: "123 Main St, New York"
+ *               dropoffAddress:
+ *                 type: string
+ *                 description: Human-readable dropoff address
+ *                 example: "JFK Airport Terminal 1"
+ *               seats:
+ *                 type: integer
+ *                 description: Number of seats required
+ *                 minimum: 1
+ *                 maximum: 4
+ *                 default: 1
+ *                 example: 2
+ *               luggage:
+ *                 type: integer
+ *                 description: Number of luggage bags
+ *                 minimum: 0
+ *                 default: 0
+ *                 example: 2
+ *               airportLat:
+ *                 type: number
+ *                 description: Airport latitude for direction detection
+ *                 example: 40.6413
+ *               airportLng:
+ *                 type: number
+ *                 description: Airport longitude for direction detection
+ *                 example: -73.7781
  *     responses:
- *       200:
- *         description: success
+ *       201:
+ *         description: Ride created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 rideId:
+ *                   type: string
+ *                   format: uuid
+ *                   example: "84879dcc-055d-47ab-b9a1-e672c6e21cfe"
+ *                 status:
+ *                   type: string
+ *                   enum: [pending]
+ *                   example: "pending"
+ *                 direction:
+ *                   type: string
+ *                   enum: [airport_to_city, city_to_airport]
+ *                   example: "city_to_airport"
+ *                 estimatedPrice:
+ *                   type: number
+ *                   example: 53.1
+ *                 message:
+ *                   type: string
+ *                   example: "Finding your pool and driver..."
+ *                 estimatedWaitTime:
+ *                   type: string
+ *                   example: "2-5 minutes"
  *       400:
- *         description: bad request
+ *         description: Invalid request - missing fields or not an airport ride
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Ride must start or end at the airport"
  *       500:
- *         description: internal server error
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Failed to create ride request"
  */
- 
 
 // Airport coordinates (JFK example - update for your airport)
 const AIRPORT_LAT = 40.6413;
