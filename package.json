@@ -32,6 +32,8 @@
   "dependencies": {
     "@alike/env": "workspace:*",
     "dotenv": "catalog:",
+    "next-swagger-doc": "^0.4.1",
+    "swagger-ui-react": "^5.31.1",
     "zod": "catalog:"
   },
   "devDependencies": {
