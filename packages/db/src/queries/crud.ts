@@ -11,14 +11,17 @@ import {
   rideRequests, 
   pools, 
   drivers,
+  vehicles,
   type NewUser,
   type NewRideRequest,
   type NewPool,
   type NewDriver,
+  type NewVehicle,
   type User,
   type RideRequest,
   type Pool,
   type Driver,
+  type Vehicle,
 } from "../schema/schema";
 
 // ============================================================================
@@ -219,4 +222,50 @@ export async function updatePoolStatus(id: string, status: Pool["status"]): Prom
 export async function deletePool(id: string): Promise<Pool | undefined> {
   const [pool] = await db.delete(pools).where(eq(pools.id, id)).returning();
   return pool;
+}
+
+// ============================================================================
+// VEHICLE CRUD
+// ============================================================================
+
+export async function createVehicle(data: NewVehicle): Promise<Vehicle | undefined> {
+  const [vehicle] = await db.insert(vehicles).values(data).returning();
+  return vehicle;
+}
+
+export async function getVehicleById(id: string): Promise<Vehicle | undefined> {
+  return db.query.vehicles.findFirst({
+    where: eq(vehicles.id, id),
+    with: {
+      driver: true,
+    },
+  });
+}
+
+export async function getVehicleByDriverId(driverId: string): Promise<Vehicle | undefined> {
+  return db.query.vehicles.findFirst({
+    where: eq(vehicles.driverId, driverId),
+  });
+}
+
+export async function getAllVehicles(): Promise<Vehicle[]> {
+  return db.query.vehicles.findMany({
+    with: {
+      driver: true,
+    },
+  });
+}
+
+export async function updateVehicle(id: string, data: Partial<NewVehicle>): Promise<Vehicle | undefined> {
+  const [vehicle] = await db
+    .update(vehicles)
+    .set(data)
+    .where(eq(vehicles.id, id))
+    .returning();
+  return vehicle;
+}
+
+export async function deleteVehicle(id: string): Promise<Vehicle | undefined> {
+  const [vehicle] = await db.delete(vehicles).where(eq(vehicles.id, id)).returning();
+  return vehicle;
 }
