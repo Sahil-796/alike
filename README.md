@@ -2,8 +2,17 @@
 
 A scalable, event-driven backend system for smart airport ride pooling with geospatial matching, concurrency handling, and real-time driver assignment.
 
+---
+
+## **BACKEND ENGINEER ASSIGNMENT**
+### **Problem Statement**
+Build a Smart Airport Ride Pooling Backend System that groups passengers into shared cabs while optimizing routes and pricing.
+
+---
+
 ## Table of Contents
 
+- [Assignment Deliverables](#backend-engineer-assignment---deliverables)
 - [System Overview](#system-overview)
 - [Architecture](#architecture)
 - [Algorithms & Data Structures](#algorithms--data-structures)
@@ -19,8 +28,6 @@ A scalable, event-driven backend system for smart airport ride pooling with geos
 - [Testing](#testing)
 - [Development Scripts](#development-scripts)
 - [Technical Implementation Details](#technical-implementation-details)
-- [Troubleshooting](#troubleshooting)
-- [Evaluation Checklist](#evaluation-checklist)
 - [Complexity Analysis Summary](#complexity-analysis-summary)
 - [License](#license)
 
@@ -231,7 +238,9 @@ The application will be available at:
 
 ## API Documentation
 
-Interactive API documentation available at `/api-doc` when running the app.
+**📄 PDF Documentation**: See [`alike-api.pdf`](./alike-api.pdf) in the root directory for a complete Swagger API reference (print of the `/api-doc` page).
+
+Interactive API documentation also available at `/api-doc` when running the app.
 
 ### Create Ride
 ```http
@@ -508,81 +517,6 @@ bunx tsx src/start-worker.ts
 redis-cli
 LLEN bull:ride-matching:wait  # See pending jobs
 ```
-
-### Test Structure
-
-**Files Created:**
-- `packages/db/src/test/system.test.ts` - Basic unit tests (pricing, schema)
-- `packages/db/src/test/integration.test.ts` - Full flow tests (create ride → match → complete)
-- `packages/db/src/test/algorithms.ts` - Algorithm documentation with Big O notation
-
-**Running Tests:**
-```bash
-cd packages/db
-bun test  # Runs all tests
-```
-
-**Test Categories:**
-- **Unit Tests**: Pricing calculations, database schema validation
-- **Integration Tests**: Full ride creation flow
-- **Algorithm Tests**: Verify complexity claims (O(log n), etc.)
-
-### What is `algorithms.ts`?
-
-**Purpose:** Documentation file for interview submission
-
-**Contains:**
-- Detailed explanation of each algorithm used
-- Big O complexity analysis (time & space)
-- Code locations where algorithms are implemented
-- Performance benchmarks
-- Optimization opportunities considered
-
-**Why It Exists:**
-Assignment requires "DSA approach with complexity analysis" - this file proves the implementation uses proper algorithms with documented complexity.
-
-**Not Executable Code:** It's pure documentation (comments + exported constants) explaining the theoretical foundation of the system.
-
-## Troubleshooting
-
-### Database Connection Error
-```bash
-# Ensure Docker is running
-docker ps
-
-# Restart services
-bun run db:stop
-bun run db:start
-```
-
-### Queue Not Processing
-```bash
-# Check Redis is running
-redis-cli ping  # Should return PONG
-
-# Restart worker
-Ctrl+C (stop worker)
-bun run queue:start
-```
-
-### Port Already in Use
-```bash
-# Kill process on port 3000
-lsof -ti:3000 | xargs kill -9
-```
-
-## Evaluation Checklist
-
-- ✅ **DSA Approach**: Documented algorithms with complexity analysis
-- ✅ **Low Level Design**: Class diagrams and patterns
-- ✅ **High Level Architecture**: System diagrams
-- ✅ **Concurrency Handling**: Row locking demonstrated
-- ✅ **Database Schema**: Proper indexing strategy
-- ✅ **Dynamic Pricing**: Formula implemented
-- ✅ **Working Backend**: Fully runnable locally
-- ✅ **API Documentation**: Swagger/OpenAPI
-- ✅ **Tech Stack**: Documented
-- ✅ **Sample Test Data**: Included
 
 ## Complexity Analysis Summary
 
