@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../index";
 import { rideRequests, pools, drivers, vehicles, type RideRequest, type Pool, type Driver } from "../schema/schema";
+import { calculateOptimalDetour, type Waypoint } from "./detour";
 
 // ============================================================================
 // RIDE STATUS UPDATES
@@ -161,7 +162,7 @@ export async function findBestPool(
   let minDetour = Infinity;
 
   for (const pool of availablePools) {
-    const detour = await calculateDetour(pool, pickupLat, pickupLng, dropoffLat, dropoffLng);
+    const detour = await calculateDetour(pool, pickupLat, pickupLng, dropoffLat, dropoffLng, direction);
     
     if (detour < minDetour) {
       minDetour = detour;
@@ -527,72 +528,33 @@ async function calculateDetour(
   newPickupLat: number,
   newPickupLng: number,
   newDropoffLat: number,
-  newDropoffLng: number
+  newDropoffLng: number,
+  direction: 'airport_to_city' | 'city_to_airport' = 'city_to_airport'
 ): Promise<number> {
-  // Simple detour calculation: 
-  // Current route distance + distance to new pickup/dropoff
-  // This is a simplified version - in production, use proper route optimization
+  // Use optimal detour calculation that tries all insertion positions
+  // This ensures we find the minimum detour possible
   
   const waypoints = pool.waypoints || [];
   if (waypoints.length < 2) return 0;
 
-  // Calculate current route distance
-  let currentDistance = 0;
-  for (let i = 1; i < waypoints.length; i++) {
-    const prev = waypoints[i - 1];
-    const curr = waypoints[i];
-    if (!prev || !curr) continue;
-    currentDistance += calculateDistance(
-      prev.lat,
-      prev.lng,
-      curr.lat,
-      curr.lng
-    );
-  }
+  // Convert pool waypoints to format expected by calculateOptimalDetour
+  const existingWaypoints: Waypoint[] = waypoints.map((w, index) => ({
+    lat: w.lat,
+    lng: w.lng,
+    type: w.type,
+    sequence: index + 1
+  }));
 
-  // Calculate new route with insertion
-  // For simplicity, add new pickup after last pickup, new dropoff before first dropoff
-  const pickups = waypoints.filter(w => w.type === 'pickup');
-  const dropoffs = waypoints.filter(w => w.type === 'dropoff');
+  // Use optimal insertion heuristic to find minimum detour
+  const result = calculateOptimalDetour(
+    existingWaypoints,
+    { lat: newPickupLat, lng: newPickupLng },
+    { lat: newDropoffLat, lng: newDropoffLng },
+    direction,
+    3.0 // max detour tolerance in km
+  );
 
-  let newDistance = 0;
-  
-  // Route: existing pickups -> new pickup -> new dropoff -> existing dropoffs
-  const lastPickup = pickups[pickups.length - 1];
-  if (lastPickup) {
-    newDistance += calculateDistance(
-      lastPickup.lat,
-      lastPickup.lng,
-      newPickupLat,
-      newPickupLng
-    );
-  }
-  
-  newDistance += calculateDistance(newPickupLat, newPickupLng, newDropoffLat, newDropoffLng);
-  
-  const firstDropoff = dropoffs[0];
-  if (firstDropoff) {
-    newDistance += calculateDistance(
-      newDropoffLat,
-      newDropoffLng,
-      firstDropoff.lat,
-      firstDropoff.lng
-    );
-  }
-
-  return newDistance - currentDistance;
+  return result.detourKm;
 }
 
-function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLng = (lng2 - lng1) * (Math.PI / 180);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) *
-      Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+
