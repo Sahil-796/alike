@@ -134,7 +134,6 @@ export async function updateRideRequestStatus(
   const updates: Partial<RideRequest> = { status };
   
   if (status === "matched") updates.matchedAt = new Date();
-  if (status === "confirmed") updates.confirmedAt = new Date();
   if (status === "ongoing") updates.startedAt = new Date();
   if (status === "completed") updates.completedAt = new Date();
   if (status === "cancelled") updates.cancelledAt = new Date();
@@ -206,7 +205,7 @@ export async function getPoolsByStatus(status: Pool["status"]): Promise<Pool[]> 
 export async function updatePoolStatus(id: string, status: Pool["status"]): Promise<Pool | undefined> {
   const updates: Partial<Pool> = { status };
   
-  if (status === "locked") updates.lockedAt = new Date();
+  if (status === "driver_arrived") updates.lockedAt = new Date();
   if (status === "ongoing") updates.startedAt = new Date();
   if (status === "completed") updates.completedAt = new Date();
   
