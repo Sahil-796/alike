@@ -2,6 +2,28 @@
 
 A scalable, event-driven backend system for smart airport ride pooling with geospatial matching, concurrency handling, and real-time driver assignment.
 
+## Table of Contents
+
+- [System Overview](#system-overview)
+- [Architecture](#architecture)
+- [Algorithms & Data Structures](#algorithms--data-structures)
+- [Assumptions & Design Decisions](#assumptions--design-decisions)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Setup Instructions](#setup-instructions)
+- [API Documentation](#api-documentation)
+- [How It Works](#how-it-works)
+- [Database Schema](#database-schema)
+- [Pricing Formula](#pricing-formula)
+- [Detour Algorithm Explained](#detour-algorithm-explained)
+- [Testing](#testing)
+- [Development Scripts](#development-scripts)
+- [Technical Implementation Details](#technical-implementation-details)
+- [Troubleshooting](#troubleshooting)
+- [Evaluation Checklist](#evaluation-checklist)
+- [Complexity Analysis Summary](#complexity-analysis-summary)
+- [License](#license)
+
 ## System Overview
 
 This system groups passengers into shared airport rides while optimizing routes and pricing. It supports both airport-to-city and city-to-airport directions with automatic driver assignment.
@@ -155,7 +177,8 @@ bun install
 
 ### 2. Start Services
 ```bash
-# Start PostgreSQL and Redis
+# Start PostgreSQL and Redis (from project root)
+cd alike
 bun run db:start
 
 # Verify services are running
@@ -164,6 +187,9 @@ docker ps
 
 ### 3. Database Setup
 ```bash
+# From project root
+cd alike
+
 # Generate migrations (creates SQL files)
 bun run db:generate
 
@@ -186,13 +212,15 @@ REDIS_PORT=6379
 ```
 
 ### 5. Start Application
-Terminal 1 - Start Worker:
+Terminal 1 - Start Worker (from project root):
 ```bash
+cd alike
 bun run queue:start
 ```
 
-Terminal 2 - Start Web Server:
+Terminal 2 - Start Web Server (from project root):
 ```bash
+cd alike
 bun run dev:web
 ```
 
@@ -319,6 +347,8 @@ Content-Type: application/json
 - B-tree indexes on status, driver_id, user_id
 - Composite indexes for common queries
 
+**Quick Start:** Try running `./setup.sh` to automate the entire setup process (starts services, runs migrations, and seeds data).
+
 ## Pricing Formula
 
 ```
@@ -332,9 +362,57 @@ Discount = $105 × (2/4) × 0.5 = $26.25
 Final = $78.75 (26% savings)
 ```
 
+## Detour Algorithm Explained
+
+When adding a new passenger to an existing pool, we must ensure the detour doesn't inconvenience existing passengers too much.
+
+### The Problem
+- Existing pool: Pickup A → Pickup B → Airport
+- New passenger wants to join at Pickup C
+- Where should we insert C to minimize extra distance?
+
+### The Solution: Brute-Force Insertion Heuristic
+
+Since pools have max 8 passengers (4 pickups + 4 dropoffs), we can try ALL possible insertion positions:
+
+**Algorithm Steps:**
+1. Get current route waypoints (pickups and dropoffs)
+2. Calculate current total distance
+3. For each possible insertion position (0 to n):
+   - Insert new pickup/dropoff at position i
+   - Calculate new total distance
+   - Track the minimum distance found
+4. Detour = (new distance - current distance)
+5. If detour ≤ maxDetourKm (default 3km), passenger can join
+
+**Example:**
+```
+Current: Home A → Home B → Airport [15km total]
+
+Try inserting Home C at position 0:
+  Home C → Home A → Home B → Airport = 18km (detour: 3km) ✓
+
+Try inserting Home C at position 1:
+  Home A → Home C → Home B → Airport = 16.5km (detour: 1.5km) ✓ BEST
+
+Try inserting Home C at position 2:
+  Home A → Home B → Home C → Airport = 17km (detour: 2km) ✓
+```
+
+**Complexity:** O(n²) where n ≤ 8 waypoints → effectively O(1) constant time
+
+**Why Not A* or Dijkstra?** 
+- We don't need the absolute shortest path between two points
+- We need the best INSERTION position in an existing route
+- With only 8 waypoints, brute-force is fast and guarantees optimal insertion
+- Real routing APIs (Google Maps, OSRM) would be used in production for actual driving distances
+
 ## Testing
 
 ```bash
+# From project root
+cd alike
+
 # Run all tests
 bun run test
 
