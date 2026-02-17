@@ -2,7 +2,8 @@ import { Queue, Worker } from "bullmq";
 import { 
   findBestPool, 
   assignRideToPool, 
-  createPoolForRide 
+  createPoolForRide,
+  cancelPoolForRide
 } from "./queries/rides";
 import { updatePoolStatus } from "./queries/crud";
 
@@ -34,6 +35,9 @@ export function startRideWorker() {
   const worker = new Worker("ride-matching", async (job) => {
     if (job.name === "find-pool") {
       await processRideMatching(job.data);
+    }
+    if (job.name === "cancel-ride") {
+      await cancelRide(job.data);
     }
     return { success: true };
   }, { 
@@ -102,7 +106,7 @@ async function processRideMatching(data: {
         
         if (existingPool.filledSeats + data.seats >= existingPool.maxSeats) {
           console.log(`   Pool ${existingPool.id} is now FULL!`);
-          await updatePoolStatus(existingPool.id, "locked");
+          await updatePoolStatus(existingPool.id, "driver_assigned");
         }
       } else {
         console.error(`   ❌ Failed to assign: ${result.error}`);
@@ -156,55 +160,30 @@ async function createNewPoolForRide(data: {
   }
 }
 
+
+
 // ============================================================================
-// API USAGE EXAMPLES
+// cancel ride
 // ============================================================================
 
-/*
-// apps/web/src/app/api/rides/route.ts
-import { addRideToQueue } from "@alike/db/events";
-import { createRideRequest } from "@alike/db/queries/rides";
+async function cancelRide(data: {
+  rideId: string;
+}) {
+  const result = await cancelPoolForRide(data.rideId);
+  // this is a crud api which handles updating the db for cancelled status in ride requests
+  // also removes passenger from the pool
+  // 
+  // however we handle the logic about cancellation fee in this working on the basis of 
+  // whether the driver hasnt arrived yet (no fees) or he has arrived (charged cancellation)
+  // 
+  // or any other services which might be needed to call 
+  // eg: invoice, payment apis, email, company logistics 
 
-export async function POST(request: Request) {
-  const body = await request.json();
-  
-  // 1. Save ride to database with status "pending"
-  const ride = await createRideRequest(body);
-  
-  // 2. Add to queue (INSTANT - doesn't wait!)
-  await addRideToQueue({
-    rideId: ride.id,
-    userId: ride.userId,
-    pickupLat: ride.pickupLat,
-    pickupLng: ride.pickupLng,
-    dropoffLat: ride.dropoffLat,
-    dropoffLng: ride.dropoffLng,
-    seats: ride.seats,
-    luggage: ride.luggage,
-  });
-  
-  // 3. Return immediately!
-  return Response.json({
-    rideId: ride.id,
-    status: "pending",
-    message: "We're finding your pool..."
-  });
+  if (result.success) {
+    console.log(`    Cancelled ride ${data.rideId}${result.fee ? ` (fee: $${result.fee})` : ''}`);
+  } else {
+    console.error(`    Failed to cancel ride ${data.rideId}: ${result.error}`);
+  }
 }
 
-// apps/web/src/app/api/rides/[id]/route.ts
-import { getRideRequestById } from "@alike/db/queries/crud";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const ride = await getRideRequestById(params.id);
-  
-  return Response.json({
-    id: ride.id,
-    status: ride.status,  // "pending" → "matched" → "confirmed"
-    poolId: ride.poolId,
-  });
-}
-
-// To start worker, add to your main server file:
-import { startRideWorker } from "@alike/db/events";
-startRideWorker();
-*/
