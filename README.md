@@ -28,13 +28,13 @@ This system groups passengers into shared airport rides while optimizing routes 
 ### Visual Diagrams
 
 **Class Diagram:**
-![Class Diagram](plantuml-class-diagram.png)
+![Class Diagram](class-diagram.png)
 
 **Component Architecture:**
-![Component Diagram](plantuml-component-diagram.png)
+![Component Diagram](component-diagram.png)
 
 **Sequence Flow:**
-![Sequence Diagram](plantuml-sequence-diagram.png)
+![Sequence Diagram](sequence-diagram.png)
 
 *Note: Diagrams generated from PlantUML files (`*.puml`) using [planttext.com](https://www.planttext.com)*
 
