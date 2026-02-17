@@ -14,7 +14,7 @@ export async function updateRideStatus(
 
   // Set timestamps based on status
   if (status === "matched") updates.matchedAt = new Date();
-  if (status === "confirmed") updates.confirmedAt = new Date();
+  if (status === "driver_arrived") updates.driverArrivedAt = new Date();
   if (status === "ongoing") updates.startedAt = new Date();
   if (status === "completed") updates.completedAt = new Date();
   if (status === "cancelled") updates.cancelledAt = new Date();
@@ -359,7 +359,7 @@ export async function assignDriverToPool(
       .where(eq(pools.id, poolId))
       .for("update");
 
-    if (!pool || pool.status !== 'locked') {
+    if (!pool || pool.status !== 'forming') {
       return { success: false, error: "Pool not available for assignment" };
     }
 
@@ -385,7 +385,7 @@ export async function assignDriverToPool(
     // 5. Update all ride requests in pool
     await tx
       .update(rideRequests)
-      .set({ status: 'confirmed' })
+      .set({ status: 'driver_arrived' })
       .where(eq(rideRequests.poolId, poolId));
 
     return { success: true };
@@ -424,21 +424,87 @@ export async function driverArrived(
     const [updatedPool] = await tx
       .update(pools)
       .set({
-        status: 'locked',
+        status: 'driver_arrived',
+        driverArrivedAt: new Date(),
         lockedAt: new Date(),
       })
       .where(eq(pools.id, poolId))
       .returning();
 
-    // Update all ride requests to confirmed
+    // Update all ride requests to driver_arrived
     await tx
       .update(rideRequests)
-      .set({ status: 'confirmed' })
+      .set({ status: 'driver_arrived' })
       .where(eq(rideRequests.poolId, poolId));
 
     return { success: true, pool: updatedPool };
   });
 }
+
+// ============================================================================
+// CANCEL RIDE
+// ============================================================================
+export async function cancelPoolForRide(rideId: string): Promise<{ success: boolean; error?: string; fee?: number }> {
+  try {
+    const ride = await db.query.rideRequests.findFirst({
+      where: eq(rideRequests.id, rideId)
+    });
+
+    if (!ride) {
+      return { success: false, error: 'Ride not found' };
+    }
+
+    // Check if ride can be cancelled
+    if (ride.status === 'completed' || ride.status === 'cancelled') {
+      return { success: false, error: 'Ride already completed or cancelled' };
+    }
+
+    let cancellationFee = 0;
+
+    // If ride has pool assigned, check if driver has arrived
+    if (ride.poolId) {
+      const [pool] = await db
+        .select()
+        .from(pools)
+        .where(eq(pools.id, ride.poolId))
+        .for("update");
+
+      if (pool) {
+        // If driver has arrived, charge cancellation fee
+        if (pool.status === 'driver_arrived' || pool.driverArrivedAt) {
+          cancellationFee = 5.00; // $5 cancellation fee
+        }
+
+        // Update pool capacity if ride was matched
+        if (ride.status === 'matched') {
+          await db
+            .update(pools)
+            .set({
+              filledSeats: pool.filledSeats - ride.seats,
+              filledLuggage: pool.filledLuggage - ride.luggage,
+            })
+            .where(eq(pools.id, pool.id));
+        }
+      }
+    }
+
+    // Update ride status to cancelled
+    await db
+      .update(rideRequests)
+      .set({
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        cancellationReason: 'User cancelled',
+      })
+      .where(eq(rideRequests.id, rideId));
+
+    return { success: true, fee: cancellationFee };
+  } catch (error) {
+    console.error('Error cancelling ride:', error);
+    return { success: false, error: 'Failed to cancel ride' };
+  }
+}
+
 
 // ============================================================================
 // HELPER FUNCTIONS
