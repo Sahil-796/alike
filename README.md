@@ -34,9 +34,9 @@ This system groups passengers into shared airport rides while optimizing routes 
 ![Component Diagram](component-diagram.png)
 
 **Sequence Flow:**
+
 ![Sequence Diagram](sequence-diagram.png)
 
-*Note: Diagrams generated from PlantUML files (`*.puml`) using [planttext.com](https://www.planttext.com)*
 
 ### Key Features
 - **Geospatial Matching**: O(log n) queries using PostGIS R-tree index
@@ -75,10 +75,9 @@ This system groups passengers into shared airport rides while optimizing routes 
 ### Performance Targets
 | Metric | Target | Achieved |
 |--------|--------|----------|
-| API Latency | <300ms | ~50-100ms (async) |
-| Throughput | 100 req/s | ✅ Supported |
-| Concurrent Users | 10,000 | ✅ Scalable |
-| Geospatial Query | Fast | O(log n) |
+| API Latency | <300ms | ~80ms (ride booking - major api)|
+| Throughput | 100 req/s |  Supported due to locks, indexing and normalised shcema |
+| Concurrent Users | 10,000 |  Scalable |
 
 ## Assumptions & Design Decisions
 
@@ -94,7 +93,7 @@ This system groups passengers into shared airport rides while optimizing routes 
 - Common in airport shuttle services where drivers are employees
 
 **Future Enhancement:**
-- Add driver notification system (WebSocket/SSE)
+- Add driver notification system
 - Implement accept/reject flow with timeout
 - Support multiple driver bidding on pool
 
@@ -110,9 +109,9 @@ This system groups passengers into shared airport rides while optimizing routes 
 
 ## Tech Stack
 
-- **Database**: PostgreSQL 16 with PostGIS extension
-- **Cache/Queue**: Redis 7 with BullMQ
-- **Backend**: Next.js 16 API Routes
+- **Database**: PostgreSQL with PostGIS extension
+- **Cache/Queue**: Redis with BullMQ
+- **Backend**: Next.js API Routes
 - **ORM**: Drizzle ORM
 - **Language**: TypeScript
 - **Testing**: Bun Test
@@ -133,11 +132,11 @@ alike/
 │       ├── src/
 │       │   ├── schema/           # Database schema
 │       │   ├── queries/          # Business logic
-│       │   │   ├── rides.ts      # Matching & pooling
+│       │   │   ├── rides.ts      # Matching and pooling
 │       │   │   └── crud.ts       # CRUD operations
 │       │   ├── events.ts         # Queue system
-│       │   └── test/             # Test files
-│       └── docker-compose.yml    # PostgreSQL + Redis
+│       │   └── test/             
+│       └── docker-compose.yml    
 ```
 
 ## Setup Instructions
@@ -170,6 +169,9 @@ bun run db:generate
 
 # Apply migrations to database
 bun run db:migrate
+
+# Seed the db
+bun run db:seed
 
 # Optional: Open database GUI
 bun run db:studio
