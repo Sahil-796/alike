@@ -17,20 +17,18 @@ import { relations, sql } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['passenger', 'driver', 'admin']);
 export const rideStatusEnum = pgEnum('ride_status', [
-  'pending',      // Searching for pool
-  'matched',      // Found pool, waiting for confirmation
-  'confirmed',    // Pool confirmed, driver assigned
-  'driver_arrived', 
-  'ongoing',      // Ride in progress
+  'pending',           // Searching for pool
+  'matched',           // Found pool, driver assigned
+  'driver_arrived',    // Driver at pickup location
+  'ongoing',           // Ride in progress
   'completed', 
   'cancelled'
 ]);
 export const poolStatusEnum = pgEnum('pool_status', [
-  'forming',      // Accepting passengers
-  'locked',       // Max capacity reached, finalizing
-  'confirmed',    // Ready to start
-  'driver_assigned',
-  'ongoing', 
+  'forming',           // Accepting passengers
+  'driver_assigned',   // Driver matched, can still add passengers
+  'driver_arrived',    // Driver at pickup, pool locked
+  'ongoing',           // Ride in progress
   'completed',
   'cancelled'
 ]);
@@ -165,6 +163,7 @@ export const pools = pgTable('pools', {
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   lockedAt: timestamp('locked_at'), // When pool stops accepting new riders
+  driverArrivedAt: timestamp('driver_arrived_at'), // When driver reaches pickup
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
 }, (table) => [
@@ -223,7 +222,7 @@ export const rideRequests = pgTable('ride_requests', {
   // Timestamps
   requestedAt: timestamp('requested_at').defaultNow().notNull(),
   matchedAt: timestamp('matched_at'),
-  confirmedAt: timestamp('confirmed_at'),
+  driverArrivedAt: timestamp('driver_arrived_at'),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
 }, (table) => [
