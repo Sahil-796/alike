@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cancelPoolForRide } from "@alike/db/queries/rides";
 import { addRideToQueue } from "@alike/db/events";
 
 /**
@@ -60,10 +59,10 @@ import { addRideToQueue } from "@alike/db/events";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const rideId = params.id;
+    const { id: rideId } = await params;
 
     // Add cancellation job to queue for background processing
     await addRideToQueue({

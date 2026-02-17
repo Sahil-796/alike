@@ -111,10 +111,6 @@ import { eq } from "drizzle-orm";
  *                   format: date-time
  *                   nullable: true
  *                   example: "2024-01-15T10:32:15.000Z"
- *                 confirmedAt:
- *                   type: string
- *                   format: date-time
- *                   nullable: true
  *       404:
  *         description: Ride not found
  *         content:
@@ -139,10 +135,10 @@ import { eq } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const rideId = params.id;
+    const { id: rideId } = await params;
     
     // Get ride with pool info
     const ride = await getRideRequestById(rideId);
@@ -207,7 +203,6 @@ export async function GET(
       pool: poolInfo,
       requestedAt: ride.requestedAt,
       matchedAt: ride.matchedAt,
-      confirmedAt: ride.confirmedAt,
     });
 
   } catch (error) {
