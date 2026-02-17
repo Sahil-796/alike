@@ -360,18 +360,88 @@ Content-Type: application/json
 
 ## Pricing Formula
 
-```
-Base Price = $5 + (distance_km × $2.5 × seats)
-Discount = Base Price × (passengers / 4) × 0.5
-Final Price = Base Price - Discount
+The pricing system is **realistic, configurable, and fair** - designed to incentivize pooling while covering actual costs.
 
-Example: 20km, 2 seats, 2 passengers
-Base = $5 + (20 × $2.5 × 2) = $105
-Discount = $105 × (2/4) × 0.5 = $26.25
-Final = $78.75 (26% savings)
+### **Environment Variables** (Customizable in `.env`)
+```env
+PRICING_BASE_FARE=3.0          # Fixed starting cost ($3)
+PRICING_PER_KM=1.5             # Cost per km ($1.50)
+PRICING_SEAT_MULTIPLIER=1.2    # Extra 20% per additional seat
+PRICING_AIRPORT_FEE=2.0        # Airport toll/parking fee
+PRICING_MAX_DISCOUNT=0.40      # Max 40% off when pool is full
+```
+
+### **How It Works (Step by Step)**
+
+**Step 1: Calculate Base Cost**
+```
+Distance Cost = Distance (km) × $1.50 × Seat Multiplier
+Seat Multiplier = 1 + (Seats - 1) × 0.20
+
+Example: 20km ride with 2 seats
+Distance Cost = 20 × $1.50 × 1.2 = $36.00
+```
+
+**Step 2: Add Fixed Costs**
+```
+Base Price = $3.00 (base fare) + $36.00 (distance) + $2.00 (airport fee)
+Base Price = $41.00
+```
+
+**Step 3: Apply Pooling Discount**
+```
+The more people in the pool, the bigger the discount for EVERYONE:
+
+Pool Fullness = Current Passengers / 4 (max capacity)
+Discount Rate = Pool Fullness × 40% (max)
+Discount Amount = Base Price × Discount Rate
+
+Example: 2 passengers in pool
+Discount Rate = (2/4) × 0.40 = 20%
+Discount Amount = $41.00 × 0.20 = $8.20
+```
+
+**Step 4: Final Price**
+```
+Final Price = $41.00 - $8.20 = $32.80
+```
+
+### **Real-World Example Comparison**
+
+| Scenario | Base Price | Discount | You Pay | Savings |
+|----------|------------|----------|---------|---------|
+| **Solo Ride** (1 person, 20km) | $41.00 | 0% | $41.00 | - |
+| **Pool with 2** | $41.00 | 20% | $32.80 | $8.20 |
+| **Pool with 3** | $41.00 | 30% | $28.70 | $12.30 |
+| **Pool with 4** | $41.00 | 40% | $24.60 | $16.40 |
+
+### **Why This Pricing Works**
+
+✅ **Fair**: Solo riders pay full cost, poolers get rewarded  
+✅ **Transparent**: Same formula for everyone, no hidden fees  
+✅ **Configurable**: Change prices via environment variables  
+✅ **Profitable**: Covers gas, time, airport fees even with discounts  
+✅ **Incentivized**: Up to 40% off encourages pooling  
+
+### **Configuration Examples**
+
+**Premium Service** (higher prices, smaller discounts):
+```env
+PRICING_BASE_FARE=5.0
+PRICING_PER_KM=2.5
+PRICING_MAX_DISCOUNT=0.25
+```
+
+**Budget Service** (lower prices, bigger discounts):
+```env
+PRICING_BASE_FARE=2.0
+PRICING_PER_KM=1.0
+PRICING_MAX_DISCOUNT=0.50
 ```
 
 ## Detour Algorithm Explained
+
+> **✅ Integrated in Code**: The algorithm in `detour.ts` is actively used by `rides.ts` to calculate optimal detours when matching passengers to pools.
 
 When adding a new passenger to an existing pool, we must ensure the detour doesn't inconvenience existing passengers too much.
 
