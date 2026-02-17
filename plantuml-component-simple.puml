@@ -1,0 +1,42 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FEFEFE
+
+title Component Architecture Diagram
+
+package "Frontend Layer" {
+  [Passenger App] as Passenger
+  [Driver App] as Driver
+}
+
+package "API Layer" {
+  [Next.js API] as API
+}
+
+package "Service Layer" {
+  [Ride Service] as RideService
+  [Pool Service] as PoolService
+  [Matching Service] as MatchingService
+}
+
+package "Data Layer" {
+  database "PostgreSQL" as DB
+  database "Redis" as Redis
+}
+
+package "Background" {
+  [Worker] as Worker
+}
+
+' Connections
+Passenger --> API : HTTP
+Driver --> API : HTTP
+API --> RideService
+RideService --> PoolService
+PoolService --> MatchingService
+RideService --> Redis
+PoolService --> DB
+Worker --> Redis
+Worker --> DB
+
+@enduml

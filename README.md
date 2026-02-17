@@ -25,6 +25,19 @@ This system groups passengers into shared airport rides while optimizing routes 
                     └──────────────┘
 ```
 
+### Visual Diagrams
+
+**Class Diagram:**
+![Class Diagram](plantuml-class-diagram.png)
+
+**Component Architecture:**
+![Component Diagram](plantuml-component-diagram.png)
+
+**Sequence Flow:**
+![Sequence Diagram](plantuml-sequence-diagram.png)
+
+*Note: Diagrams generated from PlantUML files (`*.puml`) using [planttext.com](https://www.planttext.com)*
+
 ### Key Features
 - **Geospatial Matching**: O(log n) queries using PostGIS R-tree index
 - **Event-Driven Processing**: Async queue for background matching
@@ -66,6 +79,34 @@ This system groups passengers into shared airport rides while optimizing routes 
 | Throughput | 100 req/s | ✅ Supported |
 | Concurrent Users | 10,000 | ✅ Scalable |
 | Geospatial Query | Fast | O(log n) |
+
+## Assumptions & Design Decisions
+
+### Driver Assignment Model
+**Current Implementation: Automatic Assignment**
+- Drivers are **automatically assigned** to pools when a new pool is created
+- System selects the nearest available driver without requiring manual acceptance
+- Driver can reject by not showing up (out of scope for this version)
+
+**Rationale:**
+- Simpler implementation for MVP/demo
+- Faster user experience (no waiting for driver acceptance)
+- Common in airport shuttle services where drivers are employees
+
+**Future Enhancement:**
+- Add driver notification system (WebSocket/SSE)
+- Implement accept/reject flow with timeout
+- Support multiple driver bidding on pool
+
+### Airport Detection
+- Airport location is provided by client (airportLat, airportLng parameters)
+- Direction (airport_to_city vs city_to_airport) is calculated based on proximity to airport
+- Maximum 2km radius considered "at airport"
+
+### Capacity Constraints
+- Vehicle capacity determined at pool creation from assigned driver's vehicle
+- Pool max capacity = driver's vehicle maxSeats
+- Once driver arrives, pool locks (no more passengers)
 
 ## Tech Stack
 
@@ -318,6 +359,109 @@ bun run test --filter @alike/db
 | `bun run queue:start` | Start background worker |
 | `bun run dev:web` | Start web server |
 | `bun run test` | Run tests |
+
+## Technical Implementation Details
+
+### Infrastructure Setup
+
+**Docker Compose Configuration (`packages/db/docker-compose.yml`):**
+- **PostgreSQL**: Uses `postgis/postgis:16-3.4` image (includes PostGIS extension for geospatial queries)
+- **Redis**: Uses `redis:alpine` image for lightweight queue storage
+- **Volumes**: Persistent storage for both services (data survives container restarts)
+- **Ports**: PostgreSQL on 5432, Redis on 6379
+
+**Why These Images:**
+- PostGIS: Required for `ST_DWithin()` and other geospatial functions
+- Redis Alpine: Minimal footprint, perfect for queue storage
+- Both restart automatically if they crash
+
+### Database Configuration (Drizzle)
+
+**Schema Management:**
+```
+packages/db/src/schema/schema.ts  # Table definitions
+packages/db/drizzle.config.ts      # ORM configuration
+packages/db/src/migrations/        # Generated SQL files
+```
+
+**Configuration Changes Made:**
+- Updated `drizzle.config.ts` to look for `.env` in multiple locations
+- Ensured DATABASE_URL is always loaded before migrations
+- PostGIS extension auto-enabled via Docker image (no manual setup)
+
+**Migration Flow:**
+1. `bun run db:generate` - Reads schema.ts, creates SQL migration files
+2. `bun run db:migrate` - Applies migrations to PostgreSQL
+3. Migrations are idempotent (safe to run multiple times)
+
+### Event Queue (BullMQ + Redis)
+
+**Architecture:**
+```
+API Server → Redis Queue → Worker Process
+     ↓                         ↓
+   Instant               Background
+   Response              Processing
+```
+
+**How It Works:**
+1. User creates ride → API adds job to Redis (BullMQ)
+2. API returns immediately (no waiting for matching)
+3. Worker process picks up job from Redis
+4. Worker queries PostgreSQL, finds/creates pool
+5. Worker updates ride status to "matched"
+
+**Why BullMQ:**
+- **Persistent**: Jobs survive crashes (stored in Redis)
+- **Retry Logic**: Failed jobs auto-retry 3 times
+- **Scalable**: Can run multiple workers for load balancing
+- **Atomic**: Prevents race conditions in job processing
+
+**Worker Startup:**
+```bash
+cd packages/db
+bunx tsx src/start-worker.ts
+```
+
+**Monitoring Queue:**
+```bash
+redis-cli
+LLEN bull:ride-matching:wait  # See pending jobs
+```
+
+### Test Structure
+
+**Files Created:**
+- `packages/db/src/test/system.test.ts` - Basic unit tests (pricing, schema)
+- `packages/db/src/test/integration.test.ts` - Full flow tests (create ride → match → complete)
+- `packages/db/src/test/algorithms.ts` - Algorithm documentation with Big O notation
+
+**Running Tests:**
+```bash
+cd packages/db
+bun test  # Runs all tests
+```
+
+**Test Categories:**
+- **Unit Tests**: Pricing calculations, database schema validation
+- **Integration Tests**: Full ride creation flow
+- **Algorithm Tests**: Verify complexity claims (O(log n), etc.)
+
+### What is `algorithms.ts`?
+
+**Purpose:** Documentation file for interview submission
+
+**Contains:**
+- Detailed explanation of each algorithm used
+- Big O complexity analysis (time & space)
+- Code locations where algorithms are implemented
+- Performance benchmarks
+- Optimization opportunities considered
+
+**Why It Exists:**
+Assignment requires "DSA approach with complexity analysis" - this file proves the implementation uses proper algorithms with documented complexity.
+
+**Not Executable Code:** It's pure documentation (comments + exported constants) explaining the theoretical foundation of the system.
 
 ## Troubleshooting
 

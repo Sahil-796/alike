@@ -1,0 +1,39 @@
+@startuml
+title Ride Booking Flow
+
+actor Passenger
+participant "API Server" as API
+participant "Queue" as Q
+participant "Worker" as W
+database "PostgreSQL" as DB
+actor Driver
+
+== Create Ride ==
+Passenger -> API: POST /api/rides
+API -> API: Validate & Calculate price
+API -> DB: Insert ride (status: pending)
+DB --> API: rideId
+API -> Q: Enqueue job
+API --> Passenger: {rideId, status: pending}
+
+== Background Matching ==
+Q -> W: Process job
+W -> DB: Get ride details
+DB --> W: ride data
+
+alt Existing pool found
+    W -> DB: Check capacity
+    W -> DB: Update pool & ride
+else No pool found
+    W -> DB: Find nearest driver
+    W -> DB: Create pool & assign driver
+end
+
+== Driver Arrival ==
+Driver -> API: POST /arrive/{poolId}
+API -> DB: Lock pool
+API -> DB: Update status (locked)
+API --> Driver: Pool locked
+API --> Passenger: Driver arrived
+
+@enduml

@@ -1,0 +1,61 @@
+@startuml
+
+class User {
+  +id: UUID
+  +name: String
+  +email: String
+  +role: String
+}
+
+class Driver {
+  +id: UUID
+  +status: String
+  +location: Coords
+  +rating: Float
+}
+
+class Vehicle {
+  +id: UUID
+  +model: String
+  +maxSeats: Int
+}
+
+class Pool {
+  +id: UUID
+  +status: String
+  +filledSeats: Int
+  +maxSeats: Int
+}
+
+class RideRequest {
+  +id: UUID
+  +pickup: Location
+  +dropoff: Location
+  +seats: Int
+  +price: Float
+  +status: String
+}
+
+User "1" -- "0..1" Driver : is_a >
+Driver "1" -- "1" Vehicle : owns >
+Driver "1" -- "0..*" Pool : assigned_to >
+Pool "1" -- "0..*" RideRequest : contains >
+User "1" -- "0..*" RideRequest : creates >
+
+note right of User
+  Design Patterns:
+  - Repository Pattern
+  - Service Layer Pattern
+  - Queue Pattern
+  - Transaction Pattern
+  - Singleton Pattern
+end note
+
+note bottom of Pool
+  Algorithms:
+  - Spatial Index O(log n)
+  - Greedy O(k)
+  - Row Lock O(1)
+end note
+
+@enduml
